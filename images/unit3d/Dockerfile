@@ -19,6 +19,9 @@ RUN echo "@community https://nl.alpinelinux.org/alpine/v3.8/community" >> /etc/a
     bash \
     build-base \
     autoconf \
+    automake \
+    libtool \
+    nasm \
     su-exec \
     tini@community \
     php7@community \

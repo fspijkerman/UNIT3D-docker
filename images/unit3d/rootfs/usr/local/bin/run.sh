@@ -90,8 +90,7 @@ sed -i -e "s/^DB_HOST=.*\$/DB_HOST=${DB_HOST}/" \
        -e "s/^PUSHER_APP_ID=.*\$/PUSHER_APP_ID=${APP_ID}/" \
     .env
 
-# Hack
-sed -i -e 's/":6001"/""/' public/js/app.js
+
 
 # Composer and Nodejs
 # ---------------------------------------------------------------------------------------------
@@ -102,6 +101,9 @@ if [ ! -d node_modules ] ; then
   npm install
   npm install --save-dev socket.io-client
   npm run prod
+
+  # Hack
+  sed -i -e 's/":6001"/""/' public/js/app.js
 fi
 
 # Artisan

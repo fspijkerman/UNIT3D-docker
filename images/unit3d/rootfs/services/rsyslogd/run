@@ -1,5 +1,5 @@
 #!/bin/sh
 
 mkdir -p /var/spool/rsyslog
-
+rm -f /var/run/rsyslogd.pid
 exec rsyslogd -n -f /etc/rsyslog/rsyslog.conf
