@@ -1,0 +1,139 @@
+version: "3"
+
+# IPv4 only
+# docker network create external_network
+
+# IPv4/IPv6 network
+# docker network create http_network --ipv6 --subnet "fd00:0000:0000:0000::/64"
+# Refer to https://github.com/hardware/mailserver/#ipv6-support for more information.
+
+networks:
+  external_network:
+    external: true
+  internal_network:
+    external: false
+
+services:
+  nginx-web:
+    image: nginx
+    labels:
+        com.github.jrcs.letsencrypt_nginx_proxy_companion.nginx_proxy: "true"
+    container_name: ${NGINX_WEB:-nginx-web}
+    restart: always
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - ${NGINX_FILES_PATH:-./data/nginx}/conf.d:/etc/nginx/conf.d
+      - ${NGINX_FILES_PATH:-./data/nginx}/vhost.d:/etc/nginx/vhost.d
+      - ${NGINX_FILES_PATH:-./data/nginx}/html:/usr/share/nginx/html
+      - ${NGINX_FILES_PATH:-./data/nginx}/certs:/etc/nginx/certs:ro
+      - ${NGINX_FILES_PATH:-./data/nginx}/htpasswd:/etc/nginx/htpasswd:ro
+    logging:
+      options:
+        max-size: ${NGINX_WEB_LOG_MAX_SIZE:-4m}
+        max-file: ${NGINX_WEB_LOG_MAX_FILE:-10}
+    networks:
+      - external_network
+      - internal_network
+
+  nginx-gen:
+    image: jwilder/docker-gen
+    command: -notify-sighup ${NGINX_WEB:-nginx-web} -watch -wait 5s:30s /etc/docker-gen/templates/nginx.tmpl /etc/nginx/conf.d/default.conf
+    container_name: ${DOCKER_GEN:-nginx-gen}
+    restart: always
+    volumes:
+      - ${NGINX_FILES_PATH:-./data}/conf.d:/etc/nginx/conf.d
+      - ${NGINX_FILES_PATH:-./data}/vhost.d:/etc/nginx/vhost.d
+      - ${NGINX_FILES_PATH:-./data}/html:/usr/share/nginx/html
+      - ${NGINX_FILES_PATH:-./data}/certs:/etc/nginx/certs:ro
+      - ${NGINX_FILES_PATH:-./data}/htpasswd:/etc/nginx/htpasswd:ro
+      - /var/run/docker.sock:/tmp/docker.sock:ro
+      - ./nginx.tmpl:/etc/docker-gen/templates/nginx.tmpl:ro
+    logging:
+      options:
+        max-size: ${NGINX_GEN_LOG_MAX_SIZE:-2m}
+        max-file: ${NGINX_GEN_LOG_MAX_FILE:-10}
+    networks:
+      - internal_network
+
+  nginx-letsencrypt:
+    image: jrcs/letsencrypt-nginx-proxy-companion
+    container_name: ${LETS_ENCRYPT:-nginx-letsencrypt}
+    restart: always
+    volumes:
+      - ${NGINX_FILES_PATH:-./data/nginx}/conf.d:/etc/nginx/conf.d
+      - ${NGINX_FILES_PATH:-./data/nginx}/vhost.d:/etc/nginx/vhost.d
+      - ${NGINX_FILES_PATH:-./data/nginx}/html:/usr/share/nginx/html
+      - ${NGINX_FILES_PATH:-./data/nginx}/certs:/etc/nginx/certs:rw
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+    environment:
+      NGINX_DOCKER_GEN_CONTAINER: ${DOCKER_GEN:-nginx-gen}
+      NGINX_PROXY_CONTAINER: ${NGINX_WEB:-nginx-web}
+    logging:
+      options:
+        max-size: ${NGINX_LETSENCRYPT_LOG_MAX_SIZE:-2m}
+        max-file: ${NGINX_LETSENCRYPT_LOG_MAX_FILE:-10}
+    networks:
+      - internal_network
+
+  mariadb:
+    image: mariadb:10.2
+    container_name: mariadb
+    restart: ${RESTART_MODE}
+    # Info : These variables are ignored when the volume already exists (if databases was created before).
+    environment:
+      - MYSQL_RANDOM_ROOT_PASSWORD=yes
+      - MYSQL_DATABASE=${MYSQL_DATABASE}
+      - MYSQL_USER=${MYSQL_USER}
+      - MYSQL_PASSWORD=${MYSQL_PASSWORD}
+    volumes:
+      - ${VOLUMES_ROOT_PATH}/data/mysql/db:/var/lib/mysql
+    networks:
+      - internal_network
+
+  unit3d:
+    build: images/unit3d
+    container_name: unit3d
+    restart: ${RESTART_MODE}
+    environment:
+      - LETSENCRYPT_HOST=${UNIT3D_DOMAIN}
+      - LETSENCRYPT_EMAIL=${LETSENCRYPT_EMAIL}
+      - VIRTUAL_HOST=${UNIT3D_DOMAIN}
+      - VIRTUAL_PORT=8888
+      - MYSQL_USER
+      - MYSQL_PASSWORD
+      - MYSQL_DATABASE
+    volumes:
+      - ${VOLUMES_ROOT_PATH}/data/unit3d:/usr/src/app
+    depends_on:
+      - redis
+      - mariadb
+    networks:
+      - internal_network
+
+  # Database
+  # https://github.com/docker-library/redis
+  # https://redis.io/
+  redis:
+    image: redis:4.0-alpine
+    container_name: redis
+    restart: ${RESTART_MODE}
+    command: redis-server --appendonly yes
+    volumes:
+      - ${VOLUMES_ROOT_PATH}/data/redis/db:/data
+    networks:
+      - internal_network
+
+  echo:
+    build: images/echo
+    container_name: echo
+    restart: ${RESTART_MODE}
+    working_dir: "/usr/src/app"
+    depends_on:
+      - unit3d
+      - redis
+    volumes:
+      - ${VOLUMES_ROOT_PATH}/data/unit3d:/usr/src/app
+    networks:
+      - internal_network

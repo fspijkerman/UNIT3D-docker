@@ -1,0 +1,5 @@
+#!/bin/bash
+
+logger -p local0.info "s6-supervise : spawning php process"
+
+exec su-exec $UID:$GID php7 -S 0.0.0.0:8888 -t /usr/src/app/public

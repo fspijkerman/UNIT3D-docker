@@ -1,0 +1,5 @@
+#!/bin/sh
+
+mkdir -p /var/spool/rsyslog
+
+exec rsyslogd -n -f /etc/rsyslog/rsyslog.conf
